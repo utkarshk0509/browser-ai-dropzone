@@ -17,18 +17,7 @@ async function ensureLoaded(progress_callback) {
             progress_callback,
             dtype: 'fp32',
         }),
-        AutoProcessor.from_pretrained(MODEL_ID, {
-            // Custom preprocessing config for RMBG-1.4 (1024×1024 input, normalized to [-1,1])
-            do_normalize: true,
-            do_pad: false,
-            do_rescale: false,
-            do_resize: true,
-            image_mean: [0.5, 0.5, 0.5],
-            image_std: [1.0, 1.0, 1.0],
-            resample: 2,
-            rescale_factor: 0.00392156862745098, // 1/255
-            size: { width: 1024, height: 1024 },
-        }),
+        AutoProcessor.from_pretrained(MODEL_ID),
     ]);
 }
 
@@ -57,7 +46,11 @@ self.addEventListener('message', async (event) => {
             const { width, height } = image;
 
             // Preprocess → runs resize + normalize → returns { pixel_values }
-            const inputs = await processor(image);
+            const processed = await processor(image);
+
+            // RMBG-1.4's ONNX model expects the tensor keyed as "input",
+            // but AutoProcessor returns "pixel_values" — remap it here.
+            const inputs = { input: processed.pixel_values };
 
             // Forward pass through the ONNX model
             const outputs = await model(inputs);
@@ -80,13 +73,11 @@ self.addEventListener('message', async (event) => {
             const canvas = new OffscreenCanvas(width, height);
             const ctx = canvas.getContext('2d');
 
-            ctx.drawImage(
-                await createImageBitmap(
-                    new ImageData(new Uint8ClampedArray(image.data), width, height)
-                ),
-                0,
-                0
-            );
+            // Fetch the original data URL as a blob so createImageBitmap handles
+            // any channel format (RGB, RGBA, greyscale) without manual conversion.
+            const origResponse = await fetch(data);
+            const origBlob = await origResponse.blob();
+            ctx.drawImage(await createImageBitmap(origBlob), 0, 0);
 
             const imgData = ctx.getImageData(0, 0, width, height);
             for (let i = 0; i < maskImage.data.length; i++) {
