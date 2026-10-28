@@ -1,3 +1,4 @@
+
 import { AutoModel, AutoProcessor, RawImage, env } from '@huggingface/transformers';
 
 env.allowLocalModels = false;
@@ -22,7 +23,7 @@ async function ensureLoaded(progress_callback) {
 }
 
 self.addEventListener('message', async (event) => {
-    const { type, data } = event.data;
+    const { type, data, jobId } = event.data;
 
     if (type === 'LOAD_MODEL') {
         try {
@@ -38,7 +39,7 @@ self.addEventListener('message', async (event) => {
 
     if (type === 'RUN_INFERENCE') {
         try {
-            self.postMessage({ status: 'processing', data: 'Removing background locally...' });
+            self.postMessage({ status: 'processing', data: 'Removing background locally...', jobId });
             await ensureLoaded();
 
             // Decode the base64 image
@@ -87,9 +88,9 @@ self.addEventListener('message', async (event) => {
 
             // Export transparent PNG
             const blob = await canvas.convertToBlob({ type: 'image/png' });
-            self.postMessage({ status: 'complete', data: blob });
+            self.postMessage({ status: 'complete', data: blob, jobId });
         } catch (err) {
-            self.postMessage({ status: 'error', data: err.message });
+            self.postMessage({ status: 'error', data: err.message, jobId });
         }
     }
 });
